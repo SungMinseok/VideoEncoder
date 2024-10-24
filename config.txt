@@ -1,0 +1,3 @@
+save_folder=C:\Users\mssung\OneDrive - KRAFTON\[SEL] Minseok Sung\
+bitrate=2500
+open_after_done=True
