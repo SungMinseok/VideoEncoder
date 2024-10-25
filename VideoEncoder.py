@@ -105,6 +105,7 @@ class WindowClass(QMainWindow, form_class):
         if video_path == "":
             return
         video_info = sv.get_videoinfo(video_path)
+        self.input_startsec.setText('0')
         self.input_endsec.setText(str(video_info.duration))
 
     def print_log(self, log):
@@ -112,14 +113,29 @@ class WindowClass(QMainWindow, form_class):
         QApplication.processEvents()
 
     def activate(self):
+
+#
+        self.input_datapath.setText(self.set_most_recent_file(fr'C:/Users/mssung/Videos/Captures/'))
+        self.get_video_info()
+
+
         input_filename = self.input_datapath.text()
         output_path = self.input_resultpath.text()
         start_sec = float(self.input_startsec.text())
         end_sec = float(self.input_endsec.text())
         tempname = self.input_resultname.text()
+
+
+        
         if tempname == "":
             tempname = "result"
-        output_filename = f'{output_path}{tempname}.mp4'
+
+        current_time = datetime.now().strftime('%y%m%d_%H%M')
+        self.input_resultname.setText(current_time)
+
+        # Create the output filename in 'yymmdd_hhmm.mp4' format
+        output_filename = f'{output_path}{current_time}.mp4'
+        #output_filename = f'{output_path}{tempname}.mp4'
 
         # Stop the previous thread if it is still running
         if self.thread is not None and self.thread.isRunning():
@@ -129,6 +145,26 @@ class WindowClass(QMainWindow, form_class):
         self.thread.finished.connect(self.on_thread_finished)
         self.thread.start()
 
+
+    def set_most_recent_file(self,folder_path):
+        try:
+            # Get all files in the directory
+            files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+            
+            # Check if folder is empty
+            if not files:
+                print("No files found in the specified folder.")
+                return None
+            
+            # Get the most recent file based on modification time
+            most_recent_file = max(files, key=lambda f: os.path.getmtime(os.path.join(folder_path, f)))
+            input_filename = os.path.join(folder_path, most_recent_file)
+            print(f"Most recent file: {input_filename}")
+            return input_filename
+        except Exception as e:
+            print(f"Error while fetching the most recent file: {e}")
+            return None
+        
     def merge(self):
         video_0 = self.input_datapath.text()
         video_1 = self.input_datapath_2.text()
@@ -142,6 +178,8 @@ class WindowClass(QMainWindow, form_class):
     def on_thread_finished(self):
         print("Thread finished")
         # Additional cleanup if needed
+        output_path = self.input_resultpath.text()
+        os.startfile(output_path)
 
 
 if __name__ == "__main__":
