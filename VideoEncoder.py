@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QLabel, QLineEdit,
-    QFileDialog, QWidget, QVBoxLayout, QHBoxLayout
+    QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QComboBox
 )
 from PyQt5.QtCore import Qt, QThread
 from datetime import datetime
@@ -9,13 +9,17 @@ import setvideo as sv
 import os
 
 class VideoEncoderThread(QThread):
-    def __init__(self, input_filename, output_filename, start_sec, end_sec, bitrate="1500k"):
+    def __init__(self, input_filename, output_filename, start_sec, end_sec, bitrate="1500k",overlay_entries=[], style_str=""):
         super().__init__()
         self.input_filename = input_filename
         self.output_filename = output_filename
         self.start_sec = start_sec
         self.end_sec = end_sec
         self.bitrate = bitrate
+        #self.overlay_text = overlay_text
+        self.overlay_entries = overlay_entries
+        self.style_str = style_str
+
         print(f"비디오 인코딩 시작: {input_filename} -> {output_filename}")
         print(f"비트레이트: {bitrate}")
         print(f"시작 시간: {start_sec}, 종료 시간: {end_sec}")
@@ -23,10 +27,22 @@ class VideoEncoderThread(QThread):
 
     def run(self):
         try:
-            sv.compress_video2(self.input_filename, self.output_filename,
-                              start_time=self.start_sec,
-                              end_time=self.end_sec,
-                              bitrate=self.bitrate)
+            overlays = self.overlay_entries  # 생성자에서 넘겨받은 리스트
+            sv.compress_video2_with_segments(
+                self.input_filename, self.output_filename,
+                overlays=overlays,
+                start_time=self.start_sec,
+                end_time=self.end_sec,
+                bitrate=self.bitrate,
+                style_str=self.style_str
+
+            )
+            # sv.compress_video2_with_text(self.input_filename, self.output_filename,
+            #                   start_time=self.start_sec,
+            #                   end_time=self.end_sec,
+            #                   bitrate=self.bitrate,
+            #                   text=self.overlay_text
+            #                   )
         except Exception as e:
             print(e)
 
@@ -128,7 +144,6 @@ class WindowClass(QMainWindow):
         self.setCentralWidget(central_widget)
 
         layout = QVBoxLayout()
-
         # Input path
         self.input_datapath = QLineEdit()
         self.input_datapath.setPlaceholderText("Input file path")
@@ -183,11 +198,48 @@ class WindowClass(QMainWindow):
         layout.addLayout(h3)
         layout.addWidget(self.input_resultname)
 
-                # Text Input for overlay
-        self.input_overlay_text = QLineEdit()
-        self.input_overlay_text.setPlaceholderText("영상에 삽입할 텍스트")
-        layout.addWidget(QLabel("오버레이 텍스트:"))
-        layout.addWidget(self.input_overlay_text)
+        # Text Input for overlay
+        # self.input_overlay_text = QLineEdit()
+        # self.input_overlay_text.setPlaceholderText("영상에 삽입할 텍스트")
+        # layout.addWidget(QLabel("오버레이 텍스트:"))
+        # layout.addWidget(self.input_overlay_text)
+
+        layout.addWidget(QLabel("자막 스타일 옵션:"))
+        style_row = QHBoxLayout()
+
+        self.combo_color = QComboBox()
+        self.combo_color.addItems(["white", "red", "yellow", "blue"])
+        self.combo_color.setCurrentText("white")
+
+        self.combo_size = QComboBox()
+        self.combo_size.addItems(["24", "32", "40", "70"])
+        self.combo_size.setCurrentText("32")
+
+        self.combo_position = QComboBox()
+        self.combo_position.addItems(["하단", "상단"])
+        self.combo_position.setCurrentText("하단")
+
+        style_row.addWidget(QLabel("색상:"))
+        style_row.addWidget(self.combo_color)
+        style_row.addWidget(QLabel("크기:"))
+        style_row.addWidget(self.combo_size)
+        style_row.addWidget(QLabel("위치:"))
+        style_row.addWidget(self.combo_position)
+
+        layout.addLayout(style_row)
+
+        layout.addWidget(QLabel("자막 구간 설정:"))
+        self.btn_add_overlay = QPushButton("자막 구간 추가")
+        self.btn_add_overlay.clicked.connect(self.add_overlay_row)
+        layout.addWidget(self.btn_add_overlay)
+        self.overlay_list = QVBoxLayout()
+        # --- Overlay Text Section ---
+
+
+        layout.addLayout(self.overlay_list)
+        layout.addStretch()
+        # --- End of Overlay Text Section ---
+
 
         h4 = QHBoxLayout()
         h4.addWidget(self.btn_execute)
@@ -246,6 +298,9 @@ class WindowClass(QMainWindow):
     def activate_latest(self):
         self.input_datapath.setText(self.set_most_recent_file('C:/Users/mssung/Videos/Captures/'))
         self.get_video_info()
+        
+        current_time = datetime.now().strftime('%y%m%d_%H%M')
+        self.input_resultname.setText(current_time)#press Q → double detail popups
         self.encode_video()
 
     def activate(self):
@@ -262,11 +317,15 @@ class WindowClass(QMainWindow):
             self.input_resultname.setText(tempname)
 
         output_filename = f'{output_path}{tempname}.mp4'
+        #text = self.input_overlay_text.text().strip()
+        overlays = self.get_overlay_entries()
 
         if self.thread and self.thread.isRunning():
             self.thread.stop()
 
-        self.thread = VideoEncoderThread(input_filename, output_filename, start_sec, end_sec, self.input_bitrate.text())
+        style_str = self.get_drawtext_style()
+
+        self.thread = VideoEncoderThread(input_filename, output_filename, start_sec, end_sec, self.input_bitrate.text(), overlays)
         self.thread.finished.connect(self.on_thread_finished)
         self.thread.start()
 
@@ -281,6 +340,61 @@ class WindowClass(QMainWindow):
         except Exception as e:
             print("Error:", e)
             return None
+        
+    def add_overlay_row(self):
+        row_layout = QHBoxLayout()
+        start_input = QLineEdit()
+        start_input.setPlaceholderText("시작")
+        end_input = QLineEdit()
+        end_input.setPlaceholderText("종료")
+        text_input = QLineEdit()
+        text_input.setPlaceholderText("표시할 텍스트")
+        remove_btn = QPushButton("❌")
+        remove_btn.setFixedWidth(30)
+
+        row_layout.addWidget(start_input)
+        row_layout.addWidget(end_input)
+        row_layout.addWidget(text_input)
+        row_layout.addWidget(remove_btn)
+
+        def remove_row():
+            for i in reversed(range(row_layout.count())):
+                widget = row_layout.itemAt(i).widget()
+                row_layout.removeWidget(widget)
+                widget.deleteLater()
+            self.overlay_list.removeItem(row_layout)
+
+        remove_btn.clicked.connect(remove_row)
+        self.overlay_list.addLayout(row_layout)
+
+    def get_overlay_entries(self):
+        overlays = [] #자막 한줄 한줄줄
+        for i in range(self.overlay_list.count()):
+            row_layout = self.overlay_list.itemAt(i)
+            start = row_layout.itemAt(0).widget().text()
+            end = row_layout.itemAt(1).widget().text()
+            text = row_layout.itemAt(2).widget().text()
+            if start and end and text:
+                overlays.append({
+                    "start": float(start),
+                    "end": float(end),
+                    "text": text
+                })
+        return overlays
+    
+    def get_drawtext_style(self):
+        font_path = "C\\:/Windows/Fonts/malgun.ttf"
+        color = self.combo_color.currentText()
+        size = self.combo_size.currentText()
+        position = self.combo_position.currentText()
+
+        y_pos = "h-line_h-10" if position == "하단" else "10"
+
+        return (
+            f"fontfile={font_path}:"
+            f"fontcolor={color}:fontsize={size}:borderw=1:"
+            f"x=(w-text_w)/2:y={y_pos}"
+        )
 
     def on_thread_finished(self):
         print("Thread finished")
