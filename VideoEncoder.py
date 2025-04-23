@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QComboBox
 )
 from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtGui import QColor, QPixmap, QIcon
 from datetime import datetime
 import setvideo as sv
 import os
@@ -28,7 +29,7 @@ class VideoEncoderThread(QThread):
     def run(self):
         try:
             overlays = self.overlay_entries  # 생성자에서 넘겨받은 리스트
-            sv.compress_video2_with_segments(
+            sv.compress_video3_with_segments(
                 self.input_filename, self.output_filename,
                 overlays=overlays,
                 start_time=self.start_sec,
@@ -151,8 +152,12 @@ class WindowClass(QMainWindow):
         self.input_datapath.dragEnterEvent = self.drag_enter_event
         self.input_datapath.dropEvent = self.drop_event
 
+        self.btn_refreshDatapath = QPushButton("🔃")
+        #self.btn_refreshDatapath.clicked.connect(lambda: self.set_most_recent_file('C:/Users/mssung/Videos/Captures/'))
+        self.btn_refreshDatapath.clicked.connect(self.refreshDatapath)
+
         self.btn_datapath = QPushButton("영상 선택")
-        self.btn_datapath.clicked.connect(lambda: self.select_input_file(self.input_datapath))
+        self.btn_datapath.clicked.connect(lambda: (self.select_input_file(self.input_datapath),self.get_video_info()))
 
         # Start, End, Bitrate
         self.input_startsec = QLineEdit("0")
@@ -169,8 +174,12 @@ class WindowClass(QMainWindow):
         self.input_resultname.setPlaceholderText("출력 파일명")
 
         # Buttons
-        self.btn_execute = QPushButton("최신 파일 실행")
-        self.btn_execute_2 = QPushButton("현재 실행")
+        self.btn_execute = QPushButton("최신 파일 실행 F2")
+        self.btn_execute.setShortcut("F2")
+        self.btn_execute.setStyleSheet("background-color: blue; color: #ffffff;")
+        self.btn_execute_2 = QPushButton("현재 실행 F3")
+        self.btn_execute_2.setShortcut("F3")
+        self.btn_execute_2.setStyleSheet("background-color: #444444; color: #ffffff;")
         self.btn_execute.clicked.connect(self.activate_latest)
         self.btn_execute_2.clicked.connect(self.activate)
 
@@ -181,6 +190,7 @@ class WindowClass(QMainWindow):
         layout.addWidget(QLabel("입력 영상 경로:"))
         h1 = QHBoxLayout()
         h1.addWidget(self.input_datapath)
+        h1.addWidget(self.btn_refreshDatapath)
         h1.addWidget(self.btn_datapath)
         layout.addLayout(h1)
 
@@ -208,7 +218,12 @@ class WindowClass(QMainWindow):
         style_row = QHBoxLayout()
 
         self.combo_color = QComboBox()
-        self.combo_color.addItems(["white", "red", "yellow", "blue"])
+        self.combo_color.addItems([
+            "white", "black", "gray", "silver", "red", "maroon", "yellow", "olive",
+            "lime", "green", "aqua", "teal", "blue", "navy", "fuchsia", "purple",
+            "orange", "gold", "pink", "brown", "cyan", "magenta", "lightblue",
+            "lightgreen", "lightgray", "darkblue", "darkred", "darkgreen"
+        ])
         self.combo_color.setCurrentText("white")
 
         self.combo_size = QComboBox()
@@ -227,6 +242,39 @@ class WindowClass(QMainWindow):
         style_row.addWidget(self.combo_position)
 
         layout.addLayout(style_row)
+        # --- 추가 자막 스타일 옵션 (border, boxcolor) ---
+        extra_style_row = QHBoxLayout()
+
+        # Border Width
+        self.combo_borderw = QComboBox()
+        self.combo_borderw.addItems(["0", "1", "2", "3", "4", "5"])
+        self.combo_borderw.setCurrentText("1")
+
+        # Border Color
+        self.combo_bordercolor = QComboBox()
+        self.combo_bordercolor.addItems(["black", "white", "red", "blue", "yellow", "green"])
+        self.combo_bordercolor.setCurrentText("black")
+
+        # Box Color (optional background box)
+        self.combo_boxcolor = QComboBox()
+        self.combo_boxcolor.addItems(["transparent", "black@0.3", "black@0.5", "black@0.8", "white@0.5", "yellow@0.5"])
+        self.combo_boxcolor.setCurrentText("transparent")
+
+        extra_style_row.addWidget(QLabel("외곽선 굵기:"))
+        extra_style_row.addWidget(self.combo_borderw)
+        extra_style_row.addWidget(QLabel("외곽선 색상:"))
+        extra_style_row.addWidget(self.combo_bordercolor)
+        extra_style_row.addWidget(QLabel("박스 색상:"))
+        extra_style_row.addWidget(self.combo_boxcolor)
+
+        layout.addLayout(extra_style_row)
+
+
+
+
+
+
+        # --- Overlay Text Section ---
 
         layout.addWidget(QLabel("자막 구간 설정:"))
         self.btn_add_overlay = QPushButton("자막 구간 추가")
@@ -249,6 +297,8 @@ class WindowClass(QMainWindow):
         layout.addWidget(self.progressLabel)
 
         central_widget.setLayout(layout)
+
+        self.setup_color_dropdown()
 
     def load_config(self):
         config = {}
@@ -325,7 +375,7 @@ class WindowClass(QMainWindow):
 
         style_str = self.get_drawtext_style()
 
-        self.thread = VideoEncoderThread(input_filename, output_filename, start_sec, end_sec, self.input_bitrate.text(), overlays)
+        self.thread = VideoEncoderThread(input_filename, output_filename, start_sec, end_sec, self.input_bitrate.text(), overlays, style_str)
         self.thread.finished.connect(self.on_thread_finished)
         self.thread.start()
 
@@ -382,19 +432,66 @@ class WindowClass(QMainWindow):
                 })
         return overlays
     
+    # def get_drawtext_style(self):
+    #     font_path = "C\\:/Windows/Fonts/malgun.ttf"
+    #     color = self.combo_color.currentText()
+    #     size = self.combo_size.currentText()
+    #     position = self.combo_position.currentText()
+
+    #     y_pos = "h-line_h-10" if position == "하단" else "10"
+
+    #     return (
+    #         #f"fontfile={font_path}:"
+    #         f"fontcolor={color}:fontsize={size}:borderw=1:"
+    #         f"x=(w-text_w)/2:y={y_pos}"
+    #     )
+    
     def get_drawtext_style(self):
         font_path = "C\\:/Windows/Fonts/malgun.ttf"
+
         color = self.combo_color.currentText()
         size = self.combo_size.currentText()
         position = self.combo_position.currentText()
+        borderw = self.combo_borderw.currentText()
+        bordercolor = self.combo_bordercolor.currentText()
+        boxcolor = self.combo_boxcolor.currentText()
 
         y_pos = "h-line_h-10" if position == "하단" else "10"
 
-        return (
-            f"fontfile={font_path}:"
-            f"fontcolor={color}:fontsize={size}:borderw=1:"
+        style = (
+            #f"fontfile={font_path}:"
+            f"fontcolor={color}:fontsize={size}:"
+            f"borderw={borderw}:bordercolor={bordercolor}:"
             f"x=(w-text_w)/2:y={y_pos}"
         )
+
+        # 박스 색상 적용
+        if boxcolor != "transparent":
+            style += f":box=1:boxcolor={boxcolor}"
+
+        return style
+
+
+    def setup_color_dropdown(self):
+        self.combo_color.clear()
+        color_names = [
+            "white", "black", "gray", "silver", "red", "maroon", "yellow", "olive",
+            "lime", "green", "aqua", "teal", "blue", "navy", "fuchsia", "purple",
+            "orange", "gold", "pink", "brown", "cyan", "magenta", "lightblue",
+            "lightgreen", "lightgray", "darkblue", "darkred", "darkgreen"
+        ]
+
+        for color_name in color_names:
+            pixmap = QPixmap(20, 20)
+            pixmap.fill(QColor(color_name))
+            icon = QIcon(pixmap)
+            self.combo_color.addItem(icon, color_name)
+
+    def refreshDatapath(self):
+        self.input_datapath.setText(self.set_most_recent_file('C:/Users/mssung/Videos/Captures/'))
+        self.get_video_info()
+        self.input_resultname.setText(datetime.now().strftime('%y%m%d_%H%M'))
+
 
     def on_thread_finished(self):
         print("Thread finished")
