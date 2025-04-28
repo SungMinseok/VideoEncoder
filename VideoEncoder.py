@@ -8,6 +8,8 @@ from PyQt5.QtGui import QColor, QPixmap, QIcon
 from datetime import datetime
 import setvideo as sv
 import os
+import subprocess
+import re
 
 class VideoEncoderThread(QThread):
     def __init__(self, input_filename, output_filename, start_sec, end_sec, bitrate="1500k",overlay_entries=[], style_str=""):
@@ -152,7 +154,8 @@ class WindowClass(QMainWindow):
         self.input_datapath.dragEnterEvent = self.drag_enter_event
         self.input_datapath.dropEvent = self.drop_event
 
-        self.btn_refreshDatapath = QPushButton("🔃")
+        self.btn_refreshDatapath = QPushButton("🔃F5")
+        self.btn_refreshDatapath.setShortcut("F5")
         #self.btn_refreshDatapath.clicked.connect(lambda: self.set_most_recent_file('C:/Users/mssung/Videos/Captures/'))
         self.btn_refreshDatapath.clicked.connect(self.refreshDatapath)
 
@@ -292,6 +295,11 @@ class WindowClass(QMainWindow):
         h4 = QHBoxLayout()
         h4.addWidget(self.btn_execute)
         h4.addWidget(self.btn_execute_2)
+
+        self.btn_make_gif = QPushButton("GIF 만들기")
+        self.btn_make_gif.clicked.connect(self.make_gif)
+
+        h4.addWidget(self.btn_make_gif)
         layout.addLayout(h4)
 
         layout.addWidget(self.progressLabel)
@@ -491,6 +499,36 @@ class WindowClass(QMainWindow):
         self.input_datapath.setText(self.set_most_recent_file('C:/Users/mssung/Videos/Captures/'))
         self.get_video_info()
         self.input_resultname.setText(datetime.now().strftime('%y%m%d_%H%M'))
+
+    def make_gif(self):
+        input_filename = self.input_datapath.text()
+        start_sec = float(self.input_startsec.text())
+        end_sec = float(self.input_endsec.text())
+        output_path = self.input_resultpath.text()
+        tempname = self.input_resultname.text().strip()
+
+        if not tempname:
+            tempname = datetime.now().strftime('%y%m%d_%H%M')
+            self.input_resultname.setText(tempname)
+
+        output_filename = f"{output_path}{tempname}.gif"
+        duration = end_sec - start_sec
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss", str(start_sec),
+            "-t", str(duration),
+            "-i", input_filename,
+            "-vf", "fps=10,scale=480:-1:flags=lanczos",
+            "-loop", "0",
+            output_filename
+        ]
+
+        print("실행 명령어:", " ".join(cmd))
+        subprocess.run(cmd, shell=True)
+        self.print_log(f"GIF 생성 완료: {output_filename}")
+
 
 
     def on_thread_finished(self):
